@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>parkour</title>
+    <style>
+        * { touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; margin: 0 auto; background: #fff; }
+        
+        #ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: #333; font-size: 28px; font-weight: bold; pointer-events: none; z-index: 5; }
+        
+        #menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 30; text-align: center;
+            opacity: 0; visibility: hidden; transition: opacity 0.6s ease;
+        }
+        #menu.active { opacity: 1; visibility: visible; }
+        .btn { padding: 18px 40px; margin: 10px; font-size: 18px; cursor: pointer; background: #222; color: white; border: none; border-radius: 50px; width: 280px; }
+        h1 { font-size: 48px; margin-bottom: 20px; letter-spacing: 5px; color: #222; }
+    </style>
+</head>
+<body>
+    <div id="ui">Счет: <span id="score">0</span></div>
+    <div id="menu" class="active">
+        <h1 id="title">ПРЫГУН</h1>
+        <button class="btn" onclick="startGame('pc')">ПК (Стрелки)</button>
+        <button class="btn" onclick="startGame('mobile')">Телефон (Тапы)</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreElement = document.getElementById("score");
+const menu = document.getElementById("menu");
+
+canvas.width = Math.min(window.innerWidth, 450);
+canvas.height = window.innerHeight;
+
+let player, platforms, monsters, bullets, particles, score, platformCount, lastPlatformX, lastPlatformY, keys = {};
+let gameActive = false, isDying = false, isMobileMode = false, curtainY = -canvas.height;
+let level = 1, nextLevelScore = 50, bgColor = "#ffffff", nextBgColor = "#f0f0f0", isTransitioning = false, transitionY = -canvas.height;
+const colorPalette = ["#fdfcf0", "#f0fdf4", "#f0f4fd", "#fcf0fd", "#fff5f0", "#f0fdfd"];
+
+function init() {
+    player = { x: canvas.width/2 - 12, y: canvas.height - 100, w: 25, h: 25, dy: 0, dx: 0, speed: 7, jump: -16, gravity: 0.7 };
+    score = 0; platformCount = 0; level = 1; nextLevelScore = 50;
+    scoreElement.innerText = score;
+    platforms = []; monsters = []; bullets = []; particles = [];
+    lastPlatformX = canvas.width/2 - 40; lastPlatformY = canvas.height - 50;
+    isDying = false; curtainY = -canvas.height; bgColor = "#ffffff";
+    platforms.push({ id: 0, x: 0, y: lastPlatformY, w: canvas.width, h: 20, type: 'normal' });
+    for (let i = 1; i < 10; i++) addPlatform(lastPlatformY - 130);
+    menu.classList.remove('active');
+}
+
+function addPlatform(y) {
+    platformCount++;
+    let id = Math.random();
+    let isTurret = platformCount % 30 === 0;
+    let isBoost = !isTurret && Math.random() < 0.15;
+    let hasSpikes = !isTurret && !isBoost && platformCount % 20 === 0;
+    let pWidth = isTurret ? 160 : 80;
+    let newX = Math.random() * (canvas.width - pWidth - 20) + 10;
+    if (Math.abs(newX - lastPlatformX) > 180) newX = lastPlatformX + (newX > lastPlatformX ? 140 : -140);
+    newX = Math.max(10, Math.min(canvas.width - pWidth - 10, newX));
+    lastPlatformX = newX; lastPlatformY = y;
+
+    let p = { id: id, x: newX, y: y, w: pWidth, h: 14, type: isBoost ? 'boost' : 'normal', isTurretBase: isTurret, hasSpikes: hasSpikes };
+    platforms.push(p);
+
+    if (isTurret) monsters.push({ parentId: id, parent: p, type: 'turret', lastShot: 0 });
+    else if (platformCount % 25 === 0 && !isBoost) monsters.push({ parentId: id, parent: p, type: 'jumper', vX: 0, vY: 0, activated: false });
+}
+
+function triggerDeath() {
+    if (isDying) return;
+    isDying = true;
+    if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(100);
+    for(let i=0; i<30; i++) {
+        particles.push({ x: player.x+12, y: player.y+12, dx: (Math.random()-0.5)*12, dy: (Math.random()-0.5)*12, life: 1 });
+    }
+}
+
+function startGame(mode) {
+    isMobileMode = (mode === 'mobile');
+    init(); gameActive = true; update();
+}
+
+window.addEventListener("keydown", e => keys[e.code] = true);
+window.addEventListener("keyup", e => keys[e.code] = false);
+canvas.addEventListener("touchstart", e => {
+    if (!isMobileMode || isDying) return;
+    if (e.touches.clientX < window.innerWidth / 2) keys["ArrowLeft"] = true;
+    else keys["ArrowRight"] = true;
+});
+canvas.addEventListener("touchend", () => { keys["ArrowLeft"] = false; keys["ArrowRight"] = false; });
+
+function update() {
+    if (!gameActive) return;
+
+    if (isDying) {
+        curtainY += 20;
+        particles.forEach(p => { p.x += p.dx*0.4; p.y += p.dy*0.4; p.dy += 0.2; p.life -= 0.02; });
+        if (curtainY >= 0) {
+            gameActive = false;
+            document.getElementById("title").innerText = "СЧЕТ: " + score;
+            menu.classList.add('active');
+        }
+    } else {
+        if (score >= nextLevelScore && !isTransitioning) {
+            isTransitioning = true; transitionY = -canvas.height;
+            nextBgColor = colorPalette[level % colorPalette.length];
+        }
+        if (isTransitioning) {
+            transitionY += 15;
+            if (transitionY >= 0 && bgColor !== nextBgColor) { bgColor = nextBgColor; level++; nextLevelScore += 50; }
+            if (transitionY > canvas.height) isTransitioning = false;
+        }
+
+        if (keys["ArrowLeft"]) player.dx = -player.speed;
+        else if (keys["ArrowRight"]) player.dx = player.speed;
+        else player.dx *= 0.8;
+        player.dy += player.gravity; player.x += player.dx; player.y += player.dy;
+        if (player.x < -player.w) player.x = canvas.width;
+        if (player.x > canvas.width) player.x = -player.w;
+
+        platforms.forEach(p => {
+            if (player.dy > 0 && player.y+player.h >= p.y && player.y+player.h <= p.y+p.h+player.dy && player.x+player.w > p.x && player.x < p.x+p.w) {
+                player.dy = p.type === 'boost' ? player.jump*1.9 : player.jump;
+                player.y = p.y - player.h;
+            }
+            if (p.hasSpikes) {
+                let sx = p.x+25, sy = p.y-10;
+                if (player.x < sx+30 && player.x+player.w > sx && player.y+player.h > sy && player.y < sy+10) triggerDeath();
+            }
+        });
+
+        monsters.forEach(m => {
+            if (m.type === 'turret') {
+                m.x = m.parent.x + m.parent.w/2 - 15; m.y = m.parent.y - 30;
+                if (Date.now() - m.lastShot > 2000) {
+                    bullets.push({ x: m.x+15, y: m.y+15, dx: (player.x < m.x ? -5 : 5), yPos: m.y+15 });
+                    m.lastShot = Date.now();
+                }
+            } else {
+                if (!m.activated) {
+                    m.x = m.parent.x+25; m.y = m.parent.y-30;
+                    if (Math.sqrt((player.x-m.x)**2 + (player.y-m.y)**2) < 250) m.activated = true;
+                } else {
+                    if (!m.vxSet) {
+                        let angle = Math.atan2(player.y-m.y, player.x-m.x);
+                        m.vX = Math.cos(angle)*8; m.vY = Math.sin(angle)*8-5; m.vxSet = true;
+                    }
+                    m.x += m.vX; m.y += m.vY; m.vY += 0.2;
+                }
+            }
+            if (player.x < m.x+30 && player.x+player.w > m.x && player.y < m.y+30 && player.y+player.h > m.y) triggerDeath();
+        });
+
+        bullets.forEach(b => { b.x += b.dx; if (player.x < b.x+6 && player.x+player.w > b.x-6 && player.y < b.yPos+6 && player.y+player.h > b.yPos-6) triggerDeath(); });
+
+        if (player.y < canvas.height * 0.4) {
+            let diff = canvas.height * 0.4 - player.y; player.y = canvas.height * 0.4;
+            platforms.forEach(p => p.y += diff); bullets.forEach(b => b.yPos += diff);
+            lastPlatformY += diff;
+            for (let i = platforms.length - 1; i >= 0; i--) {
+                if (platforms[i].y > canvas.height) {
+                    let pid = platforms[i].id;
+                    monsters = monsters.filter(m => m.parentId !== pid);
+                    platforms.splice(i, 1);
+                    addPlatform(lastPlatformY - 130); score++; scoreElement.innerText = score;
+                }
+            }
+        }
+        if (player.y > canvas.height) triggerDeath();
+    }
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.fillStyle = bgColor; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (isTransitioning) { ctx.fillStyle = nextBgColor; ctx.fillRect(0, transitionY, canvas.width, canvas.height); }
+
+    platforms.forEach(p => {
+        ctx.fillStyle = p.isTurretBase ? "#333" : (p.type === 'boost' ? "#0077ff" : "#ccc");
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        if (p.hasSpikes) { 
+            ctx.fillStyle = "#333"; ctx.beginPath(); 
+            ctx.moveTo(p.x+25, p.y); ctx.lineTo(p.x+40, p.y-10); ctx.lineTo(p.x+55, p.y); ctx.fill(); 
+        }
+    });
+
+    monsters.forEach(m => {
+        ctx.fillStyle = m.type === 'turret' ? "#ffd700" : "#9400d3"; 
+        ctx.fillRect(m.x, m.y, 30, 30);
+        let lookDir = player.x < m.x ? -1 : 1;
+        if (m.type === 'turret') {
+            ctx.fillStyle = "black"; ctx.fillRect(m.x + 6 + lookDir, m.y + 6, 4, 4); ctx.fillRect(m.x + 20 + lookDir, m.y + 6, 4, 4);
+            ctx.beginPath(); ctx.arc(m.x + 15 + lookDir * 3, m.y + 20, 5, 0, Math.PI * 2); ctx.fillStyle = "#333"; ctx.fill();
+        } else {
+            ctx.fillStyle = "white"; ctx.fillRect(m.x + 5 + lookDir, m.y + 5, 7, 7); ctx.fillRect(m.x + 18 + lookDir, m.y + 5, 7, 7);
+            ctx.fillStyle = "black"; ctx.fillRect(m.x + 5, m.y + 18, 20, 8);
+            ctx.fillStyle = "white"; for(let j=0; j<4; j++) { ctx.fillRect(m.x + 6 + j*5, m.y + 18, 2, 2); ctx.fillRect(m.x + 6 + j*5, m.y + 23, 2, 2); }
+        }
+    });
+
+    ctx.fillStyle = "red"; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.yPos, 6, 0, Math.PI*2); ctx.fill(); });
+    if (!isDying) { ctx.fillStyle = "#ff4444"; ctx.fillRect(player.x, player.y, player.w, player.h); }
+    else { particles.forEach(p => { if (p.life > 0) { ctx.fillStyle = `rgba(255,68,68,${p.life})`; ctx.fillRect(p.x, p.y, 6, 6); } }); }
+    if (isDying) { ctx.fillStyle = "#000"; ctx.fillRect(0, curtainY, canvas.width, canvas.height); }
+}
+</script>
+</body>
+</html>
