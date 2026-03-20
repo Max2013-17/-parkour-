@@ -3,10 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Паркур: Мобильная версия</title>
+    <title>Паркур: Финал</title>
     <style>
-        * { touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; box-sizing: border-box; }
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        /* Блокируем любое выделение и системные жесты */
+        * { 
+            touch-action: none; 
+            -webkit-tap-highlight-color: transparent; 
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none; 
+            box-sizing: border-box; 
+        }
+        
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; margin: 0 auto; background: #fff; width: 100%; height: 100vh; }
         
         #ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: #333; font-size: 28px; font-weight: bold; pointer-events: none; z-index: 5; }
@@ -18,8 +30,8 @@
             opacity: 0; visibility: hidden; transition: opacity 0.5s ease;
         }
         #menu.active { opacity: 1; visibility: visible; }
-        .btn { padding: 20px; margin: 10px; font-size: 20px; cursor: pointer; background: #222; color: white; border: none; border-radius: 50px; width: 80%; max-width: 300px; }
-        h1 { font-size: 40px; color: #222; margin-bottom: 30px; }
+        .btn { padding: 20px; margin: 10px; font-size: 20px; cursor: pointer; background: #222; color: white; border: none; border-radius: 50px; width: 80%; max-width: 300px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        h1 { font-size: 40px; color: #222; margin-bottom: 30px; letter-spacing: 2px; }
     </style>
 </head>
 <body>
@@ -86,7 +98,7 @@ function startGame() {
     init(); gameActive = true; update();
 }
 
-// УПРАВЛЕНИЕ: Клавиатура + Тач
+// УПРАВЛЕНИЕ
 window.addEventListener("keydown", e => keys[e.code] = true);
 window.addEventListener("keyup", e => keys[e.code] = false);
 
@@ -95,12 +107,12 @@ canvas.addEventListener("touchstart", e => {
     const tX = e.touches[0].clientX;
     if (tX < window.innerWidth / 2) { keys["ArrowLeft"] = true; keys["ArrowRight"] = false; }
     else { keys["ArrowRight"] = true; keys["ArrowLeft"] = false; }
-});
+}, {passive: false});
 
 canvas.addEventListener("touchend", e => {
     e.preventDefault();
     keys["ArrowLeft"] = false; keys["ArrowRight"] = false;
-});
+}, {passive: false});
 
 function update() {
     if (!gameActive) return;
@@ -108,7 +120,7 @@ function update() {
     if (isDying) {
         curtainY += 20;
         particles.forEach(p => { p.x += p.dx; p.y += p.dy; p.dy += 0.2; p.life -= 0.02; });
-        if (curtainY >= 0) { gameActive = false; menu.classList.add('active'); }
+        if (curtainY >= 0) { gameActive = false; document.getElementById("title").innerText = "СЧЕТ: " + score; menu.classList.add('active'); }
     } else {
         if (keys["ArrowLeft"]) player.dx = -player.speed;
         else if (keys["ArrowRight"]) player.dx = player.speed;
