@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Паркур: Возвращение Бустов</title>
+    <title>Паркур: Зональное управление</title>
     <style>
         * { touch-action: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; user-select: none; box-sizing: border-box; }
         body { margin: 0; padding: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; }
@@ -75,23 +75,16 @@ function addPlatform(y) {
     let id = Math.random();
     let isTurret = !bossBattleActive && platformCount % 20 === 0;
     let isBoost = !isTurret && !bossBattleActive && Math.random() < 0.15;
-    
     let pWidth = isTurret ? 220 : 80;
     let newX = Math.random() * (canvas.width - pWidth - 20) + 10;
     if (Math.abs(newX - lastPlatformX) > 170) newX = lastPlatformX + (newX > lastPlatformX ? 140 : -140);
     newX = Math.max(10, Math.min(canvas.width - pWidth - 10, newX));
     lastPlatformX = newX; lastPlatformY = y;
-
     let p = { id: id, x: newX, y: y, w: pWidth, h: 16, type: isBoost ? 'boost' : 'normal', isTurretBase: isTurret };
     platforms.push(p);
-
-    if (isTurret) {
-        monsters.push({ parentId: id, parent: p, type: 'turret', lastShot: 0, x: p.x + (p.w/2) - 15, y: p.y - 30 });
-    } else if (!bossBattleActive && platformCount % 15 === 0) {
-        monsters.push({ parentId: id, parent: p, type: 'jumper', activated: false, x: p.x + 25, y: p.y - 30 });
-    } else if (!bossBattleActive && platformCount % 12 === 0) {
-        monsters.push({ parentId: id, parent: p, type: 'sticker', x: p.x + 25, y: p.y - 15 });
-    }
+    if (isTurret) monsters.push({ parentId: id, parent: p, type: 'turret', lastShot: 0, x: p.x + (p.w/2) - 15, y: p.y - 30 });
+    else if (!bossBattleActive && platformCount % 15 === 0) monsters.push({ parentId: id, parent: p, type: 'jumper', activated: false, x: p.x + 25, y: p.y - 30 });
+    else if (!bossBattleActive && platformCount % 12 === 0) monsters.push({ parentId: id, parent: p, type: 'sticker', x: p.x + 25, y: p.y - 15 });
 }
 
 function triggerDeath() {
@@ -102,18 +95,36 @@ function triggerDeath() {
 
 function startGame() { init(); gameActive = true; update(); }
 
-canvas.addEventListener("touchstart", e => {
-    const tX = e.touches.clientX - canvas.getBoundingClientRect().left;
-    if (tX < canvas.width / 2) keys["ArrowLeft"] = true; else keys["ArrowRight"] = true;
-});
-canvas.addEventListener("touchend", () => { keys["ArrowLeft"] = false; keys["ArrowRight"] = false; });
+// --- ПОЧИНЕННОЕ УПРАВЛЕНИЕ ---
+function handleTouch(e) {
+    if (!gameActive || isDying) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const midX = window.innerWidth / 2;
+    if (touch.clientX < midX) {
+        keys["ArrowLeft"] = true;
+        keys["ArrowRight"] = false;
+    } else {
+        keys["ArrowRight"] = true;
+        keys["ArrowLeft"] = false;
+    }
+}
+
+canvas.addEventListener("touchstart", handleTouch, {passive: false});
+canvas.addEventListener("touchmove", handleTouch, {passive: false});
+canvas.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    keys["ArrowLeft"] = false;
+    keys["ArrowRight"] = false;
+}, {passive: false});
+
 window.addEventListener("keydown", e => keys[e.code] = true);
 window.addEventListener("keyup", e => keys[e.code] = false);
+// -----------------------------
 
 function update() {
     if (!gameActive) return;
     if (score >= 100 && !bossBattleActive && !isDying) startBoss();
-
     if (isDying) {
         curtainY += 20; particles.forEach(p => { p.x += p.dx*0.5; p.y += p.dy*0.5; p.dy += 0.2; p.life -= 0.02; });
         if (curtainY >= 0) { gameActive = false; document.getElementById("title").innerText = "СЧЕТ: " + score; menu.classList.add('active'); }
@@ -189,13 +200,11 @@ function draw() {
         ctx.fillStyle = p.isTurretBase ? "#333" : (p.type === 'boost' ? "#0077ff" : "#ccc");
         ctx.fillRect(p.x, p.y, p.w, p.h);
     });
-
     if (boss) {
         ctx.fillStyle = "rgba(50, 205, 50, 0.95)"; ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
         ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(100, boss.y+40, 25, 0, 7); ctx.arc(350, boss.y+40, 25, 0, 7); ctx.fill();
         ctx.fillStyle = "black"; ctx.beginPath(); ctx.arc(100, boss.y+40, 10, 0, 7); ctx.arc(350, boss.y+40, 10, 0, 7); ctx.fill();
     }
-
     monsters.forEach(m => {
         let dir = player.x < m.x ? -1 : 1;
         if (m.type === 'turret') {
@@ -206,13 +215,12 @@ function draw() {
             ctx.fillStyle = "#9400d3"; ctx.fillRect(m.x, m.y, 30, 30);
             ctx.fillStyle = "#fff"; ctx.fillRect(m.x+5+dir, m.y+5, 7, 7); ctx.fillRect(m.x+18+dir, m.y+5, 7, 7);
             ctx.fillStyle = "#000"; ctx.fillRect(m.x+5, m.y+18, 20, 8);
-            ctx.fillStyle = "#fff"; for(let j=0; j<4; j++) { ctx.fillRect(m.x+6+j*5, m.y+18, 2, 2); ctx.fillRect(m.x+6+j*5, m.y+23, 2, 2); }
+            ctx.fillStyle = "#fff"; for(let j=0; j<4; j++) { ctx.fillRect(m.x + 6 + j*5, m.y + 18, 2, 2); ctx.fillRect(m.x + 6 + j*5, m.y + 23, 2, 2); }
         } else {
             ctx.fillStyle = "#32CD32"; ctx.beginPath(); ctx.arc(m.x+15, m.y+15, 12, 3.14, 0); ctx.fill();
             ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(m.x+15, m.y+10, 4, 0, 7); ctx.fill();
         }
     });
-
     ctx.fillStyle = "red"; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.yPos, 6, 0, 7); ctx.fill(); });
     if (!isDying) { ctx.fillStyle = player.isSticky ? "#32CD32" : "#ff4444"; ctx.fillRect(player.x, player.y, player.w, player.h); }
     else { particles.forEach(p => { if (p.life > 0) { ctx.fillStyle = `rgba(255,68,68,${p.life})`; ctx.fillRect(p.x, p.y, 6, 6); } }); }
